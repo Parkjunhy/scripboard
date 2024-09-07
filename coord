@@ -1,0 +1,85 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import onnxruntime as ort
+import numpy as np
+import cv2
+
+class FireDetectionNode(Node):
+    def __init__(self):
+        super().__init__('fire_detection_node')
+        self.bridge = CvBridge()
+
+        # camera image topic subscribe
+        self.subscription = self.create_subscription(
+            Image,
+            '/camera/image_raw',  # camera image topic
+            self.image_callback,
+            10)
+        
+        # coordinate publishing topic
+        self.publisher_ = self.create_publisher(String, '/fire_coordinates', 10)
+
+        # ONNX model path setting
+        self.model_path = '/home/jh/yolov5/best.onnx'
+        self.session = ort.InferenceSession(self.model_path)
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_name = self.session.get_outputs()[0].name
+
+        self.get_logger().info('Fire detection node initialized')
+
+    def image_callback(self, msg):
+        # ros image to openCV image
+        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+
+        # YOLO settings
+        blob = cv2.dnn.blobFromImage(frame, 1/255.0, (640, 640), swapRB=True, crop=False)
+
+        # model inferring
+        detections = self.session.run([self.output_name], {self.input_name: blob})[0]
+
+        # detected fire coordinates
+        boxes = self.process_detections(detections, frame.shape)
+
+        # print coordinates and publish in ROS
+        if boxes:
+            for box in boxes:
+                x_min, y_min, x_max, y_max = box
+                fire_coords = f'Fire detected at: [{x_min}, {y_min}, {x_max}, {y_max}]'
+                print(fire_coords)
+                self.publisher_.publish(String(data=fire_coords))
+                self.get_logger().info(fire_coords)
+        else:
+            self.get_logger().info("No fire detected")
+
+    def process_detections(self, detections, image_shape):
+        """filtering fire detection, returning coordinates of bounding box."""
+        boxes = []
+        img_h, img_w, _ = image_shape
+
+        for detection in detections:
+            x_center, y_center, width, height = detection[:4]
+            confidence = detection[4]
+            class_id = int(detection[5])
+
+            # fire class(class_id 0)and filtering only 50% upper confidence
+            if class_id == 0 and confidence > 0.5:
+                x_min = int((x_center - width / 2) * img_w)
+                y_min = int((y_center - height / 2) * img_h)
+                x_max = int((x_center + width / 2) * img_w)
+                y_max = int((y_center + height / 2) * img_h)
+                boxes.append([x_min, y_min, x_max, y_max])
+        
+        return boxes
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = FireDetectionNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
