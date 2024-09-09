@@ -1,0 +1,43 @@
+# motor_controller.py
+
+import rclpy
+from rclpy.node import Node
+import RPi.GPIO as GPIO
+from time import sleep
+
+# GPIO pin setup
+MOTOR_PIN = 17
+
+class MotorController(Node):
+    def __init__(self):
+        super().__init__('motor_controller')
+        self.get_logger().info("Motor Controller Node has started.")
+        
+        # GPIO set
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(MOTOR_PIN, GPIO.OUT)
+        
+        # motor forward
+        self.run_motor()
+
+    def run_motor(self):
+        self.get_logger().info("Running motor forward for 3 seconds.")
+        GPIO.output(MOTOR_PIN, GPIO.HIGH)  # motor forward
+        sleep(3)  # 3sec
+        GPIO.output(MOTOR_PIN, GPIO.LOW)  # motor stop
+        self.get_logger().info("Motor stopped.")
+
+    def destroy_node(self):
+        GPIO.cleanup()  # GPIO pin remove
+        super().destroy_node()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    motor_controller = MotorController()
+    rclpy.spin(motor_controller)
+    motor_controller.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
