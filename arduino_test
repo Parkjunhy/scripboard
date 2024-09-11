@@ -1,0 +1,53 @@
+// 모터 1 제어 핀
+int motor1_inA = 7;
+int motor1_inB = 8;
+int motor1_pwm = 5;  // PWM 핀
+int motor1_en = 4;   // EN/DIAG 핀
+
+// 모터 2 제어 핀
+int motor2_inA = 9;
+int motor2_inB = 10;
+int motor2_pwm = 6;  // PWM 핀
+int motor2_en = 3;   // EN/DIAG 핀
+
+void setup() {
+  // 모터 제어 핀을 출력으로 설정
+  pinMode(motor1_inA, OUTPUT);
+  pinMode(motor1_inB, OUTPUT);
+  pinMode(motor1_pwm, OUTPUT);
+  pinMode(motor1_en, OUTPUT);
+
+  pinMode(motor2_inA, OUTPUT);
+  pinMode(motor2_inB, OUTPUT);
+  pinMode(motor2_pwm, OUTPUT);
+  pinMode(motor2_en, OUTPUT);
+  
+  // EN/DIAG 핀 활성화
+  digitalWrite(motor1_en, HIGH);
+  digitalWrite(motor2_en, HIGH);
+}
+
+void loop() {
+  // 모터 1 전진
+  digitalWrite(motor1_inA, HIGH);
+  digitalWrite(motor1_inB, LOW);
+  analogWrite(motor1_pwm, 200);  // 속도 제어 (0 ~ 255)
+
+  // 모터 2 후진
+  digitalWrite(motor2_inA, LOW);
+  digitalWrite(motor2_inB, HIGH);
+  analogWrite(motor2_pwm, 200);  // 속도 제어 (0 ~ 255)
+
+  delay(2000);  // 2초간 동작
+
+  // 모터 1, 2 멈춤
+  digitalWrite(motor1_inA, LOW);
+  digitalWrite(motor1_inB, LOW);
+  analogWrite(motor1_pwm, 0);
+
+  digitalWrite(motor2_inA, LOW);
+  digitalWrite(motor2_inB, LOW);
+  analogWrite(motor2_pwm, 0);
+
+  delay(2000);  // 2초간 대기
+}
