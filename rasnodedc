@@ -2,28 +2,28 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 import lgpio
+import time
 
-# 핀 번호 설정 (DC 모터)
-IN_A1 = 17
-IN_B1 = 27
-PWM1 = 18
-EN_DIAG1 = 22
+# 핀 번호 설정
+IN_A1 = 17  # DC 모터 1 방향 제어 핀 A
+IN_B1 = 27  # DC 모터 1 방향 제어 핀 B
+PWM1 = 18   # DC 모터 1 속도 제어 핀
+EN_DIAG1 = 22  # DC 모터 1 활성화 핀
 
-IN_A2 = 23
-IN_B2 = 24
-PWM2 = 25
-EN_DIAG2 = 5
+IN_A2 = 23  # DC 모터 2 방향 제어 핀 A
+IN_B2 = 24  # DC 모터 2 방향 제어 핀 B
+PWM2 = 25   # DC 모터 2 속도 제어 핀
+EN_DIAG2 = 5  # DC 모터 2 활성화 핀
 
-# 핀 번호 설정 (스텝 모터)
-STEP_PIN = 13
-DIR_PIN = 19
-ENA_PIN = 26
+# A4988 스텝 모터 핀 설정
+STEP_PIN = 19  # STEP 핀
+DIR_PIN = 26   # DIR 핀
+ENA_PIN = 13   # Enable 핀 (선택 사항)
 
-# 핀 번호 설정 (리니어 액츄에이터)
-IN_A3 = 6
-IN_B3 = 12
-PWM3 = 16
-EN_DIAG3 = 20
+# 리니어 액츄에이터 핀 설정
+ACTUATOR_IN_A = 20  # 액츄에이터 방향 제어 핀 A
+ACTUATOR_IN_B = 21  # 액츄에이터 방향 제어 핀 B
+ACTUATOR_PWM = 16   # 액츄에이터 속도 제어 핀
 
 class MotorController(Node):
     def __init__(self):
@@ -49,79 +49,92 @@ class MotorController(Node):
         lgpio.gpio_claim_output(self.chip, PWM2, 0)
         lgpio.gpio_claim_output(self.chip, EN_DIAG2, 0)
 
-        # 스텝 모터 핀 설정
+        # A4988 스텝 모터 핀 설정
         lgpio.gpio_claim_output(self.chip, STEP_PIN, 0)
         lgpio.gpio_claim_output(self.chip, DIR_PIN, 0)
         lgpio.gpio_claim_output(self.chip, ENA_PIN, 0)
 
         # 리니어 액츄에이터 핀 설정
-        lgpio.gpio_claim_output(self.chip, IN_A3, 0)
-        lgpio.gpio_claim_output(self.chip, IN_B3, 0)
-        lgpio.gpio_claim_output(self.chip, PWM3, 0)
-        lgpio.gpio_claim_output(self.chip, EN_DIAG3, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_PWM, 0)
 
         # 모터 드라이버 활성화
         lgpio.gpio_write(self.chip, EN_DIAG1, 1)
         lgpio.gpio_write(self.chip, EN_DIAG2, 1)
-        lgpio.gpio_write(self.chip, EN_DIAG3, 1)
+
+        # 스텝 모터 드라이버 활성화 (ENA 핀 설정, 필요 시만)
+        lgpio.gpio_write(self.chip, ENA_PIN, 1)  # 활성화
+
+        # PWM 설정 (단순히 HIGH 상태로 설정, 실제 PWM 기능은 외부 라이브러리 필요)
+        lgpio.gpio_write(self.chip, PWM1, 1)
+        lgpio.gpio_write(self.chip, PWM2, 1)
 
     def listener_callback(self, msg):
         command = msg.data.split()
-        motor_type = command[0]
+        motor = command[0]
         direction = command[1]
         speed_or_steps = int(command[2])
 
-        # DC 모터 1 제어
-        if motor_type == 'dc1':
-            self.control_dc_motor(IN_A1, IN_B1, PWM1, direction, speed_or_steps)
-            self.get_logger().info(f'DC Motor 1: {direction} at speed {speed_or_steps}')
-        
-        # DC 모터 2 제어
-        elif motor_type == 'dc2':
-            self.control_dc_motor(IN_A2, IN_B2, PWM2, direction, speed_or_steps)
-            self.get_logger().info(f'DC Motor 2: {direction} at speed {speed_or_steps}')
-
-        # 스텝 모터 제어
-        elif motor_type == 'stepper':
+        if motor == 'dc1':
+            self.control_dc_motor(1, direction, speed_or_steps)
+        elif motor == 'dc2':
+            self.control_dc_motor(2, direction, speed_or_steps)
+        elif motor == 'stepper':
             self.control_stepper_motor(direction, speed_or_steps)
-            self.get_logger().info(f'Stepper Motor: {direction} for {speed_or_steps} steps')
+        elif motor == 'actuator':
+            self.control_linear_actuator(direction, speed_or_steps)
 
-        # 리니어 액츄에이터 제어
-        elif motor_type == 'actuator':
-            self.control_actuator(direction, speed_or_steps)
-            self.get_logger().info(f'Linear Actuator: {direction} at speed {speed_or_steps}')
-
-    def control_dc_motor(self, in_a, in_b, pwm, direction, speed):
-        if direction == 'forward':
-            lgpio.gpio_write(self.chip, in_a, 1)
-            lgpio.gpio_write(self.chip, in_b, 0)
-        elif direction == 'backward':
-            lgpio.gpio_write(self.chip, in_a, 0)
-            lgpio.gpio_write(self.chip, in_b, 1)
-        lgpio.gpio_write(self.chip, pwm, speed)
+    def control_dc_motor(self, motor_num, direction, speed):
+        if motor_num == 1:
+            if direction == 'forward':
+                lgpio.gpio_write(self.chip, IN_A1, 1)
+                lgpio.gpio_write(self.chip, IN_B1, 0)
+            elif direction == 'backward':
+                lgpio.gpio_write(self.chip, IN_A1, 0)
+                lgpio.gpio_write(self.chip, IN_B1, 1)
+            self.get_logger().info(f'Motor 1: {direction} at speed {speed}')
+        elif motor_num == 2:
+            if direction == 'forward':
+                lgpio.gpio_write(self.chip, IN_A2, 1)
+                lgpio.gpio_write(self.chip, IN_B2, 0)
+            elif direction == 'backward':
+                lgpio.gpio_write(self.chip, IN_A2, 0)
+                lgpio.gpio_write(self.chip, IN_B2, 1)
+            self.get_logger().info(f'Motor 2: {direction} at speed {speed}')
 
     def control_stepper_motor(self, direction, steps):
-        lgpio.gpio_write(self.chip, ENA_PIN, 0)  # 활성화
-        lgpio.gpio_write(self.chip, DIR_PIN, 1 if direction == 'forward' else 0)
+        if direction == 'forward':
+            lgpio.gpio_write(self.chip, DIR_PIN, 1)
+        elif direction == 'backward':
+            lgpio.gpio_write(self.chip, DIR_PIN, 0)
+
+        # A4988 ENA 핀 활성화
+        lgpio.gpio_write(self.chip, ENA_PIN, 1)  # 활성화
+
+        # 스텝 모터 회전
         for _ in range(steps):
             lgpio.gpio_write(self.chip, STEP_PIN, 1)
-            rclpy.sleep(0.001)
+            time.sleep(0.001)
             lgpio.gpio_write(self.chip, STEP_PIN, 0)
-            rclpy.sleep(0.001)
-        lgpio.gpio_write(self.chip, ENA_PIN, 1)  # 비활성화
+            time.sleep(0.001)
 
-    def control_actuator(self, direction, speed):
+        # A4988 ENA 핀 비활성화 (필요 시 모터 비활성화)
+        lgpio.gpio_write(self.chip, ENA_PIN, 0)  # 비활성화
+
+        self.get_logger().info(f'Stepper Motor: {direction} for {steps} steps')
+
+    def control_linear_actuator(self, direction, speed):
         if direction == 'extend':
-            lgpio.gpio_write(self.chip, IN_A3, 1)
-            lgpio.gpio_write(self.chip, IN_B3, 0)
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
         elif direction == 'retract':
-            lgpio.gpio_write(self.chip, IN_A3, 0)
-            lgpio.gpio_write(self.chip, IN_B3, 1)
-        lgpio.gpio_write(self.chip, PWM3, speed)
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
+        self.get_logger().info(f'Linear Actuator: {direction} at speed {speed}')
 
     def destroy_node(self):
         super().destroy_node()
-        # 핀 핸들러 닫기
         lgpio.gpiochip_close(self.chip)
 
 
