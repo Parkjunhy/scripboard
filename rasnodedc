@@ -42,9 +42,7 @@ class MotorController(Node):
         lgpio.gpio_write(self.chip, EN_DIAG1, 1)
         lgpio.gpio_write(self.chip, EN_DIAG2, 1)
 
-        # PWM 설정
-        # lgpio는 직접 PWM 제어를 지원하지 않으므로 외부 PWM 라이브러리 필요
-        # 여기서는 PWM 핀을 HIGH 상태로 설정
+        # PWM 설정 (단순히 HIGH 상태로 설정, 실제 PWM 기능은 외부 라이브러리 필요)
         lgpio.gpio_write(self.chip, PWM1, 1)
         lgpio.gpio_write(self.chip, PWM2, 1)
 
@@ -61,7 +59,8 @@ class MotorController(Node):
             elif direction == 'backward':
                 lgpio.gpio_write(self.chip, IN_A1, 0)
                 lgpio.gpio_write(self.chip, IN_B1, 1)
-            # 속도 조절은 PWM 설정을 외부 라이브러리 또는 하드웨어로 해야 합니다
+            self.get_logger().info(f'Motor 1: {direction} at speed {speed}')
+            # 실제 PWM 조절은 외부 라이브러리 필요
 
         elif motor == 2:
             if direction == 'forward':
@@ -70,7 +69,8 @@ class MotorController(Node):
             elif direction == 'backward':
                 lgpio.gpio_write(self.chip, IN_A2, 0)
                 lgpio.gpio_write(self.chip, IN_B2, 1)
-            # 속도 조절은 PWM 설정을 외부 라이브러리 또는 하드웨어로 해야 합니다
+            self.get_logger().info(f'Motor 2: {direction} at speed {speed}')
+            # 실제 PWM 조절은 외부 라이브러리 필요
 
     def destroy_node(self):
         super().destroy_node()
