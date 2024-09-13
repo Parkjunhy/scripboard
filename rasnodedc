@@ -1,9 +1,9 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-import RPi.GPIO as GPIO
+import lgpio
 
-# pin no.setup
+# 핀 번호 설정
 IN_A1 = 17
 IN_B1 = 27
 PWM1 = 18
@@ -24,25 +24,29 @@ class MotorController(Node):
             10)
         self.subscription  # prevent unused variable warning
 
-        # GPIO pin setup
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(IN_A1, GPIO.OUT)
-        GPIO.setup(IN_B1, GPIO.OUT)
-        GPIO.setup(PWM1, GPIO.OUT)
-        GPIO.setup(EN_DIAG1, GPIO.OUT)
+        # GPIO 핀 핸들러 열기
+        self.chip = lgpio.gpiochip_open(0)
 
-        GPIO.setup(IN_A2, GPIO.OUT)
-        GPIO.setup(IN_B2, GPIO.OUT)
-        GPIO.setup(PWM2, GPIO.OUT)
-        GPIO.setup(EN_DIAG2, GPIO.OUT)
+        # GPIO 핀 설정
+        lgpio.gpio_claim_output(self.chip, IN_A1, 0)
+        lgpio.gpio_claim_output(self.chip, IN_B1, 0)
+        lgpio.gpio_claim_output(self.chip, PWM1, 0)
+        lgpio.gpio_claim_output(self.chip, EN_DIAG1, 0)
 
-        self.pwm1 = GPIO.PWM(PWM1, 1000)
-        self.pwm2 = GPIO.PWM(PWM2, 1000)
-        self.pwm1.start(0)
-        self.pwm2.start(0)
+        lgpio.gpio_claim_output(self.chip, IN_A2, 0)
+        lgpio.gpio_claim_output(self.chip, IN_B2, 0)
+        lgpio.gpio_claim_output(self.chip, PWM2, 0)
+        lgpio.gpio_claim_output(self.chip, EN_DIAG2, 0)
 
-        GPIO.output(EN_DIAG1, GPIO.HIGH)
-        GPIO.output(EN_DIAG2, GPIO.HIGH)
+        # 모터 드라이버 활성화
+        lgpio.gpio_write(self.chip, EN_DIAG1, 1)
+        lgpio.gpio_write(self.chip, EN_DIAG2, 1)
+
+        # PWM 설정
+        # lgpio는 직접 PWM 제어를 지원하지 않으므로 외부 PWM 라이브러리 필요
+        # 여기서는 PWM 핀을 HIGH 상태로 설정
+        lgpio.gpio_write(self.chip, PWM1, 1)
+        lgpio.gpio_write(self.chip, PWM2, 1)
 
     def listener_callback(self, msg):
         command = msg.data.split()
@@ -52,29 +56,26 @@ class MotorController(Node):
 
         if motor == 1:
             if direction == 'forward':
-                GPIO.output(IN_A1, GPIO.HIGH)
-                GPIO.output(IN_B1, GPIO.LOW)
+                lgpio.gpio_write(self.chip, IN_A1, 1)
+                lgpio.gpio_write(self.chip, IN_B1, 0)
             elif direction == 'backward':
-                GPIO.output(IN_A1, GPIO.LOW)
-                GPIO.output(IN_B1, GPIO.HIGH)
-
-            self.pwm1.ChangeDutyCycle(speed)
+                lgpio.gpio_write(self.chip, IN_A1, 0)
+                lgpio.gpio_write(self.chip, IN_B1, 1)
+            # 속도 조절은 PWM 설정을 외부 라이브러리 또는 하드웨어로 해야 합니다
 
         elif motor == 2:
             if direction == 'forward':
-                GPIO.output(IN_A2, GPIO.HIGH)
-                GPIO.output(IN_B2, GPIO.LOW)
+                lgpio.gpio_write(self.chip, IN_A2, 1)
+                lgpio.gpio_write(self.chip, IN_B2, 0)
             elif direction == 'backward':
-                GPIO.output(IN_A2, GPIO.LOW)
-                GPIO.output(IN_B2, GPIO.HIGH)
-
-            self.pwm2.ChangeDutyCycle(speed)
+                lgpio.gpio_write(self.chip, IN_A2, 0)
+                lgpio.gpio_write(self.chip, IN_B2, 1)
+            # 속도 조절은 PWM 설정을 외부 라이브러리 또는 하드웨어로 해야 합니다
 
     def destroy_node(self):
         super().destroy_node()
-        self.pwm1.stop()
-        self.pwm2.stop()
-        GPIO.cleanup()
+        # 핀 핸들러 닫기
+        lgpio.gpiochip_close(self.chip)
 
 
 def main(args=None):
