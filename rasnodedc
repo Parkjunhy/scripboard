@@ -1,0 +1,93 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import RPi.GPIO as GPIO
+
+# pin no.setup
+IN_A1 = 17
+IN_B1 = 27
+PWM1 = 18
+EN_DIAG1 = 22
+
+IN_A2 = 23
+IN_B2 = 24
+PWM2 = 25
+EN_DIAG2 = 5
+
+class MotorController(Node):
+    def __init__(self):
+        super().__init__('motor_controller')
+        self.subscription = self.create_subscription(
+            String,
+            'motor_command',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+
+        # GPIO pin setup
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(IN_A1, GPIO.OUT)
+        GPIO.setup(IN_B1, GPIO.OUT)
+        GPIO.setup(PWM1, GPIO.OUT)
+        GPIO.setup(EN_DIAG1, GPIO.OUT)
+
+        GPIO.setup(IN_A2, GPIO.OUT)
+        GPIO.setup(IN_B2, GPIO.OUT)
+        GPIO.setup(PWM2, GPIO.OUT)
+        GPIO.setup(EN_DIAG2, GPIO.OUT)
+
+        self.pwm1 = GPIO.PWM(PWM1, 1000)
+        self.pwm2 = GPIO.PWM(PWM2, 1000)
+        self.pwm1.start(0)
+        self.pwm2.start(0)
+
+        GPIO.output(EN_DIAG1, GPIO.HIGH)
+        GPIO.output(EN_DIAG2, GPIO.HIGH)
+
+    def listener_callback(self, msg):
+        command = msg.data.split()
+        motor = int(command[0])
+        direction = command[1]
+        speed = int(command[2])
+
+        if motor == 1:
+            if direction == 'forward':
+                GPIO.output(IN_A1, GPIO.HIGH)
+                GPIO.output(IN_B1, GPIO.LOW)
+            elif direction == 'backward':
+                GPIO.output(IN_A1, GPIO.LOW)
+                GPIO.output(IN_B1, GPIO.HIGH)
+
+            self.pwm1.ChangeDutyCycle(speed)
+
+        elif motor == 2:
+            if direction == 'forward':
+                GPIO.output(IN_A2, GPIO.HIGH)
+                GPIO.output(IN_B2, GPIO.LOW)
+            elif direction == 'backward':
+                GPIO.output(IN_A2, GPIO.LOW)
+                GPIO.output(IN_B2, GPIO.HIGH)
+
+            self.pwm2.ChangeDutyCycle(speed)
+
+    def destroy_node(self):
+        super().destroy_node()
+        self.pwm1.stop()
+        self.pwm2.stop()
+        GPIO.cleanup()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    motor_controller = MotorController()
+
+    try:
+        rclpy.spin(motor_controller)
+    except KeyboardInterrupt:
+        pass
+
+    motor_controller.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
