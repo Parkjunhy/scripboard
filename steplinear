@@ -1,0 +1,39 @@
+# 스텝모터 핀 설정
+STEP_PIN = 20
+DIR_PIN = 21
+ENA_PIN = 16  # ENA 핀 설정 필요 여부에 따라 사용
+# 리니어 액츄에이터 핀 설정
+ACTUATOR_IN_A = 19
+ACTUATOR_IN_B = 26
+
+# 스텝모터 및 액츄에이터 관련 핀 설정 코드 추가
+lgpio.gpio_claim_output(self.chip, STEP_PIN, 0)
+lgpio.gpio_claim_output(self.chip, DIR_PIN, 0)
+lgpio.gpio_claim_output(self.chip, ENA_PIN, 0)
+
+lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
+lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
+
+# 액츄에이터 제어 예시
+if motor == 'actuator':
+    if direction == 'extend':
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
+    elif direction == 'retract':
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
+    self.get_logger().info(f'Actuator: {direction}')
+
+# 스텝모터 제어 예시
+if motor == 'stepper':
+    if direction == 'forward':
+        lgpio.gpio_write(self.chip, DIR_PIN, 1)
+    elif direction == 'backward':
+        lgpio.gpio_write(self.chip, DIR_PIN, 0)
+    
+    for _ in range(steps):
+        lgpio.gpio_write(self.chip, STEP_PIN, 1)
+        time.sleep(0.001)  # 스텝 속도 조절
+        lgpio.gpio_write(self.chip, STEP_PIN, 0)
+        time.sleep(0.001)
+    self.get_logger().info(f'Stepper Motor: {direction} with {steps} steps')
