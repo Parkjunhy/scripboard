@@ -1,53 +1,67 @@
-// 모터 1 제어 핀
-int motor1_inA = 7;
-int motor1_inB = 8;
-int motor1_pwm = 5;  // PWM 핀
-int motor1_en = 4;   // EN/DIAG 핀
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import lgpio
+import time
 
-// 모터 2 제어 핀
-int motor2_inA = 9;
-int motor2_inB = 10;
-int motor2_pwm = 6;  // PWM 핀
-int motor2_en = 3;   // EN/DIAG 핀
+# 핀 번호 설정
+ACTUATOR_IN_A = 20
+ACTUATOR_IN_B = 21
+ACTUATOR_PWM = 12  # GPIO12는 하드웨어 PWM이 가능한 핀이지만 소프트웨어 PWM으로 제어
 
-void setup() {
-  // 모터 제어 핀을 출력으로 설정
-  pinMode(motor1_inA, OUTPUT);
-  pinMode(motor1_inB, OUTPUT);
-  pinMode(motor1_pwm, OUTPUT);
-  pinMode(motor1_en, OUTPUT);
+class ActuatorController(Node):
+    def __init__(self):
+        super().__init__('actuator_controller')
+        self.subscription = self.create_subscription(
+            String, 'actuator_command', self.listener_callback, 10)
+        self.chip = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_PWM, 0)  # PWM 핀 설정
 
-  pinMode(motor2_inA, OUTPUT);
-  pinMode(motor2_inB, OUTPUT);
-  pinMode(motor2_pwm, OUTPUT);
-  pinMode(motor2_en, OUTPUT);
-  
-  // EN/DIAG 핀 활성화
-  digitalWrite(motor1_en, HIGH);
-  digitalWrite(motor2_en, HIGH);
-}
+    def listener_callback(self, msg):
+        command = msg.data.split()
+        direction = command[0]
+        speed = int(command[1])
+        self.control_actuator(direction, speed)
 
-void loop() {
-  // 모터 1 전진
-  digitalWrite(motor1_inA, HIGH);
-  digitalWrite(motor1_inB, LOW);
-  analogWrite(motor1_pwm, 200);  // 속도 제어 (0 ~ 255)
+    def control_actuator(self, direction, speed):
+        if direction == 'extend':
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
+        elif direction == 'retract':
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+            lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
 
-  // 모터 2 후진
-  digitalWrite(motor2_inA, LOW);
-  digitalWrite(motor2_inB, HIGH);
-  analogWrite(motor2_pwm, 200);  // 속도 제어 (0 ~ 255)
+        # 소프트웨어 PWM 사용하여 속도 제어
+        self.get_logger().info(f'Linear Actuator: {direction} at speed {speed}')
+        for _ in range(100):  # 100번 반복 (적절히 조절 가능)
+            self.software_pwm(ACTUATOR_PWM, speed, frequency=50)
 
-  delay(2000);  // 2초간 동작
+    def software_pwm(self, pwm_pin, duty_cycle, frequency=50):
+        period = 1.0 / frequency  # 주기 계산 (50Hz 기준)
+        high_time = period * (duty_cycle / 100.0)
+        low_time = period - high_time
 
-  // 모터 1, 2 멈춤
-  digitalWrite(motor1_inA, LOW);
-  digitalWrite(motor1_inB, LOW);
-  analogWrite(motor1_pwm, 0);
+        # PWM 주기 동안 핀 상태 변경
+        lgpio.gpio_write(self.chip, pwm_pin, 1)
+        time.sleep(high_time)
+        lgpio.gpio_write(self.chip, pwm_pin, 0)
+        time.sleep(low_time)
 
-  digitalWrite(motor2_inA, LOW);
-  digitalWrite(motor2_inB, LOW);
-  analogWrite(motor2_pwm, 0);
+    def destroy_node(self):
+        super().destroy_node()
+        lgpio.gpiochip_close(self.chip)
 
-  delay(2000);  // 2초간 대기
-}
+def main(args=None):
+    rclpy.init(args=args)
+    actuator_controller = ActuatorController()
+    try:
+        rclpy.spin(actuator_controller)
+    except KeyboardInterrupt:
+        pass
+    actuator_controller.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
