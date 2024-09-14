@@ -1,39 +1,89 @@
-# 스텝모터 핀 설정
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import lgpio
+import time
+
+# 핀 번호 설정
+# 스텝모터 핀 정의
 STEP_PIN = 20
 DIR_PIN = 21
-ENA_PIN = 16  # ENA 핀 설정 필요 여부에 따라 사용
-# 리니어 액츄에이터 핀 설정
+ENA_PIN = 16  # ENA 핀 선택 사항 (필요 시 사용)
+
+# 리니어 액츄에이터 핀 정의
 ACTUATOR_IN_A = 19
 ACTUATOR_IN_B = 26
 
-# 스텝모터 및 액츄에이터 관련 핀 설정 코드 추가
-lgpio.gpio_claim_output(self.chip, STEP_PIN, 0)
-lgpio.gpio_claim_output(self.chip, DIR_PIN, 0)
-lgpio.gpio_claim_output(self.chip, ENA_PIN, 0)
+class ActuatorAndStepperController(Node):
+    def __init__(self):
+        super().__init__('actuator_and_stepper_controller')
 
-lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
-lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
+        self.subscription = self.create_subscription(
+            String,
+            'motor_command',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
 
-# 액츄에이터 제어 예시
-if motor == 'actuator':
-    if direction == 'extend':
-        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
-        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
-    elif direction == 'retract':
-        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
-        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
-    self.get_logger().info(f'Actuator: {direction}')
+        # GPIO 핀 핸들러 열기
+        self.chip = lgpio.gpiochip_open(0)
 
-# 스텝모터 제어 예시
-if motor == 'stepper':
-    if direction == 'forward':
-        lgpio.gpio_write(self.chip, DIR_PIN, 1)
-    elif direction == 'backward':
-        lgpio.gpio_write(self.chip, DIR_PIN, 0)
-    
-    for _ in range(steps):
-        lgpio.gpio_write(self.chip, STEP_PIN, 1)
-        time.sleep(0.001)  # 스텝 속도 조절
-        lgpio.gpio_write(self.chip, STEP_PIN, 0)
-        time.sleep(0.001)
-    self.get_logger().info(f'Stepper Motor: {direction} with {steps} steps')
+        # 스텝모터 핀 설정
+        lgpio.gpio_claim_output(self.chip, STEP_PIN, 0)
+        lgpio.gpio_claim_output(self.chip, DIR_PIN, 0)
+        lgpio.gpio_claim_output(self.chip, ENA_PIN, 0)
+
+        # 리니어 액츄에이터 핀 설정
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
+
+    def listener_callback(self, msg):
+        command = msg.data.split()
+        motor = command[0]
+        direction = command[1]
+
+        if motor == 'actuator':
+            if direction == 'extend':
+                lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
+                lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
+            elif direction == 'retract':
+                lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+                lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
+            self.get_logger().info(f'Actuator: {direction}')
+
+        elif motor == 'stepper':
+            steps = int(command[2])  # 스텝 수
+            if direction == 'forward':
+                lgpio.gpio_write(self.chip, DIR_PIN, 1)
+            elif direction == 'backward':
+                lgpio.gpio_write(self.chip, DIR_PIN, 0)
+
+            # 스텝모터 스텝 진행
+            for _ in range(steps):
+                lgpio.gpio_write(self.chip, STEP_PIN, 1)
+                time.sleep(0.001)  # 스텝 속도 조절
+                lgpio.gpio_write(self.chip, STEP_PIN, 0)
+                time.sleep(0.001)
+            self.get_logger().info(f'Stepper Motor: {direction} with {steps} steps')
+
+    def destroy_node(self):
+        super().destroy_node()
+        # 핀 핸들러 닫기
+        lgpio.gpiochip_close(self.chip)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = ActuatorAndStepperController()
+
+    try:
+        rclpy.spin(controller)
+    except KeyboardInterrupt:
+        pass
+
+    controller.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
