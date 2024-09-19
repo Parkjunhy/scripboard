@@ -60,17 +60,23 @@ class FireDetectionNode(Node):
         # Process detections
         boxes = self.process_detections(outputs[0], (height, width))
         if boxes:
-            self.get_logger().info(f'Fire detected with bounding boxes: {boxes}')
             for box in boxes:
                 x_min, y_min, x_max, y_max = box
                 
+                # Calculate the center point of the bounding box
+                x_center = (x_min + x_max) / 2
+                y_center = (y_min + y_max) / 2
+                
                 # Create and publish fire location point message
                 fire_point = Point()
-                fire_point.x = float((x_min + x_max) / 2)
-                fire_point.y = float((y_min + y_max) / 2)
+                fire_point.x = float(x_center)
+                fire_point.y = float(y_center)
                 fire_point.z = 0.0  # Use z for confidence if needed
                 
                 self.fire_location_publisher.publish(fire_point)
+
+                # Log the center point only
+                self.get_logger().info(f'Fire detected at center: ({x_center}, {y_center})')
         else:
             self.get_logger().info('No fire detected')
 
@@ -87,15 +93,10 @@ class FireDetectionNode(Node):
                 class_id = int(round(class_id))
 
                 if conf > self.confidence_threshold and class_id == self.fire_class_id:
-                    # Normalie coordinates by multiplying with image dimensions
-                    # x_center = float(x_center) * width
-                    # y_center = float(y_center) * height
-                    # w = float(w) * width
-                    # h = float(h) * height
-
+                    # Convert YOLO format to bounding box
                     x_center, y_center, w, h = float(x_center), float(y_center), float(w), float(h)
 
-                    # Calculate the top-left and botom-right coord of the bounding box
+                    # Calculate the top-left and bottom-right coordinates of the bounding box
                     x_min = int(x_center - (w / 2))
                     y_min = int(y_center - (h / 2))
                     x_max = int(x_center + (w / 2))
