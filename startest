@@ -1,0 +1,35 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class ExtinguishPublisher(Node):
+
+    def __init__(self):
+        super().__init__('extinguish_publisher')
+
+        # 'extinguish' 토픽에 String 메시지를 발행하는 Publisher 생성
+        self.publisher_ = self.create_publisher(String, 'extinguish', 10)
+
+        # 노드 시작 시 'start' 메시지 발행
+        self.publish_start_message()
+
+    def publish_start_message(self):
+        msg = String()
+        msg.data = 'start'
+        self.publisher_.publish(msg)
+        self.get_logger().info('Published: "start" to extinguish topic')
+
+def main(args=None):
+    rclpy.init(args=args)
+    extinguish_publisher = ExtinguishPublisher()
+
+    try:
+        rclpy.spin_once(extinguish_publisher, timeout_sec=1.0)  # 한번만 메시지 발행 후 종료
+    except KeyboardInterrupt:
+        pass
+
+    extinguish_publisher.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
