@@ -1,4 +1,4 @@
-import rclpy
+import rclpy 
 from rclpy.node import Node
 from std_msgs.msg import String
 import lgpio
@@ -20,18 +20,16 @@ class DCMotor1Controller(Node):
         self.chip = lgpio.gpiochip_open(0)
         lgpio.gpio_claim_output(self.chip, IN_A1, 0)
         lgpio.gpio_claim_output(self.chip, IN_B1, 0)
-        lgpio.gpio_claim_output(self.chip, PWM1, 0)
         lgpio.gpio_claim_output(self.chip, EN_DIAG1, 0)
 
-        # diag/pwn activate
+        # diag/pwm activate
         lgpio.gpio_write(self.chip, EN_DIAG1, 1)
-        lgpio.gpio_write(self.chip, PWM1, 1)
 
     def listener_callback(self, msg):
         # 구독한 메시지에서 방향과 속도를 파싱합니다.
         command = msg.data.split()
         direction = command[0]
-        speed = int(command[1])
+        speed = int(command[1])  # 속도는 0~100 범위여야 합니다.
         self.control_motor(direction, speed)
 
     def control_motor(self, direction, speed):
@@ -42,8 +40,13 @@ class DCMotor1Controller(Node):
         elif direction == 'backward':
             lgpio.gpio_write(self.chip, IN_A1, 0)
             lgpio.gpio_write(self.chip, IN_B1, 1)
+
+        # 속도를 PWM으로 설정 (0 ~ 100 값을 듀티 사이클로 변환)
+        duty_cycle = speed / 100.0  # 0.0 ~ 1.0 범위로 변환
+        lgpio.tx_pwm(self.chip, PWM1, 5000, int(1000000 * duty_cycle))  # 5kHz PWM 신호, 듀티 사이클 적용
+        
         # 모터의 방향과 속도를 로그로 출력합니다.
-        self.get_logger().info(f'Motor 1: {direction} at speed {speed}')
+        self.get_logger().info(f'Motor 1: {direction} at speed {speed}%')
 
     def destroy_node(self):
         # 노드 종료 시 GPIO 칩을 닫습니다.
