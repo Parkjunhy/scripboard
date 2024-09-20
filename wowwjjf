@@ -1,0 +1,105 @@
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Point
+from std_msgs.msg import String
+from time import sleep
+
+class ObjectAlignment(Node):
+
+    def __init__(self):
+        super().__init__('object_alignment')
+
+        # Camera resolution (width in pixels)
+        self.camera_width = 640  # Camera resolution (width)
+        self.center_x = self.camera_width / 2  # Center coordinate of the camera
+
+        # Create Publishers for DC motor control (commands for motor 1 and motor 2)
+        self.left_motor_pub = self.create_publisher(String, 'dc_motor_1_command', 10)
+        self.right_motor_pub = self.create_publisher(String, 'dc_motor_2_command', 10)
+
+        self.extinguish_pub = self.create_publisher(String, 'extinguish', 10)
+
+        # Create Subscriber to get coordinates from the 'fire_location' topic
+        self.create_subscription(Point, 'fire_location', self.object_callback, 10)
+
+        # Allowed tolerance (How far the object can deviate from the center before adjusting)
+        self.alignment_tolerance = 10  # Tolerance in pixels
+
+        # State flag (indicates whether the robot is aligned)
+        self.is_aligned = False
+
+    def object_callback(self, msg):
+        # Get the x-coordinate of the object from the fire_location topic
+        object_x = msg.x  # X-coordinate of the object
+
+        # Rotate the robot to align the object with the camera's center line
+        self.align_robot(object_x)
+
+    def align_robot(self, object_x):
+        # Calculate how far the object's x-coordinate is from the center of the camera
+        offset = object_x - self.center_x
+
+        # Initialize rotation control commands
+        left_motor_command = String()
+        right_motor_command = String()
+
+        # Check if the object is within the acceptable tolerance range
+        if abs(offset) > self.alignment_tolerance:
+            self.is_aligned = False
+            if offset > 0:
+                # If the object is on the right, rotate clockwise
+                left_motor_command.data = "forward 50"  # Left motor moves forward
+                right_motor_command.data = "backward 50"  # Right motor moves backward
+            else:
+                # If the object is on the left, rotate counter-clockwise
+                left_motor_command.data = "backward 50"  # Left motor moves backward
+                right_motor_command.data = "forward 50"  # Right motor moves forward
+        else:
+            # If the object is within the tolerance range, stop` and proceed to move forward
+            if not self.is_aligned:
+                self.is_aligned = True
+                self.get_logger().info(f"Aligned with object. Object X: {object_x}. Stopping briefly...")
+
+                # Stop the motors briefly after alignment
+                left_motor_command.data = "forward 0"
+                right_motor_command.data = "forward 0"
+                self.left_motor_pub.publish(left_motor_command)
+                self.right_motor_pub.publish(right_motor_command)
+                sleep(1)  # Stop for 1 second
+
+                # Move straight forward for 10 seconds
+                self.get_logger().info("Moving forward for 10 seconds...")
+                left_motor_command.data = "forward 50"
+                right_motor_command.data = "forward 50"
+                self.left_motor_pub.publish(left_motor_command)
+                self.right_motor_pub.publish(right_motor_command)
+
+                sleep(4)  # Move forward for 10 seconds
+
+                # Stop after 10 seconds
+                self.get_logger().info("Stopping after 10 seconds.")
+                left_motor_command.data = "forward 0"
+                right_motor_command.data = "forward 0"
+                self.left_motor_pub.publish(left_motor_command)
+                self.right_motor_pub.publish(right_motor_command)
+
+                self.extinguish_pub.publish("start")
+
+        # Publish motor commands
+        self.left_motor_pub.publish(left_motor_command)
+        self.right_motor_pub.publish(right_motor_command)
+
+def main(args=None):
+    rclpy.init(args=args)
+    object_alignment = ObjectAlignment()
+
+    try:
+        rclpy.spin(object_alignment)
+    except KeyboardInterrupt:
+        pass
+
+    object_alignment.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
