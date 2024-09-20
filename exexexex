@@ -1,0 +1,118 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import lgpio
+import time
+import threading
+
+# Pin configuration
+STEP_PIN = 19
+DIR_PIN = 26
+ENA_PIN = 13
+
+ACTUATOR_IN_A = 20
+ACTUATOR_IN_B = 21
+ACTUATOR_PWM = 12  # Software PWM
+
+class ExtinguishController(Node):
+
+    def __init__(self):
+        super().__init__('extinguish_controller')
+        
+        # Subscribe to the 'extinguish' topic
+        self.subscription = self.create_subscription(String, 'extinguish', self.extinguish_callback, 10)
+
+        # Initialize GPIOs for stepper motor
+        self.chip = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_output(self.chip, STEP_PIN, 0)
+        lgpio.gpio_claim_output(self.chip, DIR_PIN, 0)
+        lgpio.gpio_claim_output(self.chip, ENA_PIN, 0)
+
+        # Initialize GPIOs for actuator
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
+        lgpio.gpio_claim_output(self.chip, ACTUATOR_PWM, 0)
+
+    def extinguish_callback(self, msg):
+        if msg.data == "start":
+            # Start both stepper motor and actuator actions in parallel
+            actuator_thread = threading.Thread(target=self.control_actuator)
+            stepper_thread = threading.Thread(target=self.control_stepper_motor)
+
+            actuator_thread.start()
+            stepper_thread.start()
+
+            actuator_thread.join()
+            stepper_thread.join()
+
+    def control_actuator(self):
+        # Retract actuator for 3 seconds
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
+        self.get_logger().info("Retracting actuator...")
+        time.sleep(3)  # Retract for 3 seconds
+
+        # Stop actuator and hold position for 15 seconds
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
+        self.get_logger().info("Holding actuator position for 15 seconds...")
+        time.sleep(15)
+
+        # Extend actuator back to original position for 3 seconds
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
+        self.get_logger().info("Extending actuator back...")
+        time.sleep(3)
+
+        # Stop actuator
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
+        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
+        self.get_logger().info("Actuator back to original position.")
+
+    def control_stepper_motor(self):
+        # Enable stepper motor
+        lgpio.gpio_write(self.chip, ENA_PIN, 1)
+        self.get_logger().info("Stepper motor activated...")
+
+        end_time = time.time() + 21  # Run for 21 seconds
+        while time.time() < end_time:
+            # Rotate left 60 degrees (assuming 200 steps per revolution)
+            self.rotate_stepper('left', steps=33)  # 60 degrees = 33 steps
+            time.sleep(0.5)
+
+            # Rotate right 60 degrees
+            self.rotate_stepper('right', steps=33)
+            time.sleep(0.5)
+
+        # Disable stepper motor after action
+        lgpio.gpio_write(self.chip, ENA_PIN, 0)
+        self.get_logger().info("Stepper motor deactivated.")
+
+    def rotate_stepper(self, direction, steps):
+        # Set direction
+        if direction == 'left':
+            lgpio.gpio_write(self.chip, DIR_PIN, 1)
+        elif direction == 'right':
+            lgpio.gpio_write(self.chip, DIR_PIN, 0)
+
+        # Step the motor
+        for _ in range(steps):
+            lgpio.gpio_write(self.chip, STEP_PIN, 1)
+            time.sleep(0.005)
+            lgpio.gpio_write(self.chip, STEP_PIN, 0)
+            time.sleep(0.005)
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = ExtinguishController()
+
+    try:
+        rclpy.spin(controller)
+    except KeyboardInterrupt:
+        pass
+
+    controller.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
