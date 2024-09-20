@@ -41,12 +41,12 @@ class DCMotor1Controller(Node):
             lgpio.gpio_write(self.chip, IN_A1, 0)
             lgpio.gpio_write(self.chip, IN_B1, 1)
 
-        # 속도를 PWM으로 설정 (0 ~ 100 값을 듀티 사이클로 변환)
-        duty_cycle = speed / 100.0  # 0.0 ~ 1.0 범위로 변환
-        lgpio.tx_pwm(self.chip, PWM1, 5000, int(1000000 * duty_cycle))  # 5kHz PWM 신호, 듀티 사이클 적용
+        # 속도를 PWM으로 설정 (0 ~ 100 값을 0 ~ 1000000 범위로 변환)
+        duty_cycle = int(10000 * speed)  # 0 ~ 1000000 범위로 변환
+        lgpio.tx_pwm(self.chip, PWM1, 5000, duty_cycle)  # 5kHz PWM 신호, 듀티 사이클 적용
         
         # 모터의 방향과 속도를 로그로 출력합니다.
-        self.get_logger().info(f'Motor 1: {direction} at speed {speed}%')
+        self.get_logger().info(f'Motor 1: {direction} at speed {speed}% (PWM duty: {duty_cycle})')
 
     def destroy_node(self):
         # 노드 종료 시 GPIO 칩을 닫습니다.
