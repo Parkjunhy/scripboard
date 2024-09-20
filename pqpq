@@ -3,136 +3,66 @@ from rclpy.node import Node
 from std_msgs.msg import String
 import lgpio
 import time
-import threading
 
-# Pin configuration
+# 핀 설정
 STEP_PIN = 19
 DIR_PIN = 26
 ENA_PIN = 13
 
-ACTUATOR_IN_A = 20
-ACTUATOR_IN_B = 21
-ACTUATOR_PWM = 12  # Software PWM
-
-class ExtinguishController(Node):
-
+class StepperMotorController(Node):
     def __init__(self):
-        super().__init__('extinguish_controller')
+        super().__init__('stepper_motor_controller')
+        self.subscription = self.create_subscription(
+            String, 'stepper_motor_command', self.listener_callback, 10)
         
-        # Subscribe to the 'extinguish' topic
-        self.subscription = self.create_subscription(String, 'extinguish', self.extinguish_callback, 10)
-
-        # Initialize GPIOs for stepper motor
+        # GPIO 초기화
         self.chip = lgpio.gpiochip_open(0)
         lgpio.gpio_claim_output(self.chip, STEP_PIN, 0)
         lgpio.gpio_claim_output(self.chip, DIR_PIN, 0)
         lgpio.gpio_claim_output(self.chip, ENA_PIN, 0)
 
-        # Initialize GPIOs for actuator
-        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_A, 0)
-        lgpio.gpio_claim_output(self.chip, ACTUATOR_IN_B, 0)
-        lgpio.gpio_claim_output(self.chip, ACTUATOR_PWM, 0)
-
-    def extinguish_callback(self, msg):
-        if msg.data == "start":
-            # Start both stepper motor and actuator actions in parallel
-            actuator_thread = threading.Thread(target=self.control_actuator)
-            stepper_thread = threading.Thread(target=self.control_stepper_motor)
-
-            actuator_thread.start()
-            stepper_thread.start()
-
-            actuator_thread.join()
-            stepper_thread.join()
-
-    def control_actuator(self):
-        # Retract actuator for 3 seconds
-        self.control_actuator_movement('retract', speed=100)
-        time.sleep(3)  # Retract for 3 seconds
-
-        # Stop actuator and hold position for 15 seconds
-        self.stop_actuator()
-        self.get_logger().info("Holding actuator position for 15 seconds...")
-        time.sleep(15)
-
-        # Extend actuator back to original position for 3 seconds
-        self.control_actuator_movement('extend', speed=100)
-        time.sleep(3)
-
-        # Stop actuator
-        self.stop_actuator()
-        self.get_logger().info("Actuator back to original position.")
-
-    def control_actuator_movement(self, direction, speed):
-        if direction == 'extend':
-            lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 1)
-            lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
-        elif direction == 'retract':
-            lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
-            lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 1)
-
-        self.get_logger().info(f"Actuator {direction} at speed {speed}")
-        for _ in range(100):  # Perform PWM control for 100 cycles
-            self.software_pwm(ACTUATOR_PWM, speed, frequency=50)
-
-    def stop_actuator(self):
-        lgpio.gpio_write(self.chip, ACTUATOR_IN_A, 0)
-        lgpio.gpio_write(self.chip, ACTUATOR_IN_B, 0)
-
-    def software_pwm(self, pwm_pin, duty_cycle, frequency=50):
-        period = 1.0 / frequency  # Calculate the period for the given frequency
-        high_time = period * (duty_cycle / 100.0)
-        low_time = period - high_time
-
-        # Control the pin state for PWM signal
-        lgpio.gpio_write(self.chip, pwm_pin, 1)
-        time.sleep(high_time)
-        lgpio.gpio_write(self.chip, pwm_pin, 0)
-        time.sleep(low_time)
-
-    def control_stepper_motor(self):
-        # Enable stepper motor
+        # ENA 핀을 활성화하여 모터 준비
         lgpio.gpio_write(self.chip, ENA_PIN, 1)
-        self.get_logger().info("Stepper motor activated...")
 
-        end_time = time.time() + 21  # Run for 21 seconds
-        while time.time() < end_time:
-            # Rotate left 60 degrees (assuming 200 steps per revolution)
-            self.rotate_stepper('left', steps=33)  # 60 degrees = 33 steps
-            time.sleep(0.5)
+    def listener_callback(self, msg):
+        command = msg.data.split()
+        direction = command[0]
+        steps = int(command[1])
+        self.control_motor(direction, steps)
 
-            # Rotate right 60 degrees
-            self.rotate_stepper('right', steps=33)
-            time.sleep(0.5)
-
-        # Disable stepper motor after action
-        lgpio.gpio_write(self.chip, ENA_PIN, 0)
-        self.get_logger().info("Stepper motor deactivated.")
-
-    def rotate_stepper(self, direction, steps):
-        # Set direction
-        if direction == 'left':
+    def control_motor(self, direction, steps):
+        # 방향 설정
+        if direction == 'forward':
             lgpio.gpio_write(self.chip, DIR_PIN, 1)
-        elif direction == 'right':
+        elif direction == 'backward':
             lgpio.gpio_write(self.chip, DIR_PIN, 0)
 
-        # Step the motor
+        # 스텝 모터 구동
         for _ in range(steps):
             lgpio.gpio_write(self.chip, STEP_PIN, 1)
-            time.sleep(0.005)
+            time.sleep(0.005)  # 스텝 신호 시간 조정
             lgpio.gpio_write(self.chip, STEP_PIN, 0)
             time.sleep(0.005)
 
+        self.get_logger().info(f'Stepper Motor: {direction} for {steps} steps')
+
+        # 모터 동작 후 비활성화
+        lgpio.gpio_write(self.chip, ENA_PIN, 0)
+
+    def destroy_node(self):
+        super().destroy_node()
+        lgpio.gpiochip_close(self.chip)
+
 def main(args=None):
     rclpy.init(args=args)
-    controller = ExtinguishController()
-
+    motor_controller = StepperMotorController()
+    
     try:
-        rclpy.spin(controller)
+        rclpy.spin(motor_controller)
     except KeyboardInterrupt:
         pass
 
-    controller.destroy_node()
+    motor_controller.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
