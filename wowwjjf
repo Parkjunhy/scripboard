@@ -20,7 +20,8 @@ class PseudoAlignment(Node):
         self.start_time = self.get_clock().now()
 
     def rotate_clockwise(self):
-        elapsed_time = (self.get_clock().now() - self.start_time).seconds
+        # Calculate elapsed time in seconds
+        elapsed_time = (self.get_clock().now() - self.start_time).nanoseconds / 1e9
 
         if elapsed_time < 5:
             # Rotate clockwise (5 seconds)
@@ -57,7 +58,8 @@ class PseudoAlignment(Node):
         self.forward_timer = self.create_timer(1.0, self.forward)
 
     def forward(self):
-        elapsed_time = (self.get_clock().now() - self.move_start_time).seconds
+        # Calculate elapsed time in seconds
+        elapsed_time = (self.get_clock().now() - self.move_start_time).nanoseconds / 1e9
 
         if elapsed_time < 10:
             # Move forward
