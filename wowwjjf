@@ -1,7 +1,6 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from time import sleep
 
 class PseudoAlignment(Node):
 
@@ -12,50 +11,83 @@ class PseudoAlignment(Node):
         self.left_motor_pub = self.create_publisher(String, 'dc_motor_1_command', 10)
         self.right_motor_pub = self.create_publisher(String, 'dc_motor_2_command', 10)
 
-        # Start the movement process
-        self.start_movement()
+        # Create Publisher for 'extinguish' topic
+        self.extinguish_pub = self.create_publisher(String, 'extinguish', 10)
 
-    def start_movement(self):
+        # Step 1: Start the movement process with a timer for rotation
+        self.get_logger().info("Starting rotation...")
+        self.rotate_timer = self.create_timer(1.0, self.rotate_clockwise)
+        self.start_time = self.get_clock().now()
+
+    def rotate_clockwise(self):
+        elapsed_time = (self.get_clock().now() - self.start_time).seconds
+
+        if elapsed_time < 5:
+            # Rotate clockwise (5 seconds)
+            left_motor_command = String()
+            right_motor_command = String()
+            left_motor_command.data = "forward 50"  # Left motor moves forward
+            right_motor_command.data = "backward 50"  # Right motor moves backward
+            self.left_motor_pub.publish(left_motor_command)
+            self.right_motor_pub.publish(right_motor_command)
+        else:
+            # Stop the rotation after 5 seconds
+            self.rotate_timer.cancel()
+            self.get_logger().info("Stopping rotation.")
+            self.stop_motors()
+
+            # Wait 3 seconds before moving forward
+            self.get_logger().info("Waiting for 3 seconds...")
+            self.wait_timer = self.create_timer(3.0, self.move_forward)
+
+    def stop_motors(self):
+        # Stop both motors
         left_motor_command = String()
         right_motor_command = String()
-
-        # Step 1: Rotate clockwise for 5 seconds
-        self.get_logger().info("Rotating clockwise for 5 seconds...")
-        left_motor_command.data = "forward 50"  # Left motor moves forward
-        right_motor_command.data = "backward 50"  # Right motor moves backward
-        self.left_motor_pub.publish(left_motor_command)
-        self.right_motor_pub.publish(right_motor_command)
-        sleep(5)  # Rotate for 5 seconds
-
-        # Step 2: Stop for 3 seconds
-        self.get_logger().info("Stopping for 3 seconds...")
         left_motor_command.data = "forward 0"
         right_motor_command.data = "forward 0"
         self.left_motor_pub.publish(left_motor_command)
         self.right_motor_pub.publish(right_motor_command)
-        sleep(3)  # Stop for 3 seconds
 
-        # Step 3: Move forward for 10 seconds
+    def move_forward(self):
+        # Move forward for 10 seconds
+        self.wait_timer.cancel()
         self.get_logger().info("Moving forward for 10 seconds...")
-        left_motor_command.data = "forward 50"  # Left motor moves forward
-        right_motor_command.data = "forward 50"  # Right motor moves forward
-        self.left_motor_pub.publish(left_motor_command)
-        self.right_motor_pub.publish(right_motor_command)
-        sleep(10)  # Move forward for 10 seconds
+        self.move_start_time = self.get_clock().now()
+        self.forward_timer = self.create_timer(1.0, self.forward)
 
-        # Step 4: Stop after moving forward
-        self.get_logger().info("Stopping after moving forward.")
-        left_motor_command.data = "forward 0"
-        right_motor_command.data = "forward 0"
-        self.left_motor_pub.publish(left_motor_command)
-        self.right_motor_pub.publish(right_motor_command)
+    def forward(self):
+        elapsed_time = (self.get_clock().now() - self.move_start_time).seconds
+
+        if elapsed_time < 10:
+            # Move forward
+            left_motor_command = String()
+            right_motor_command = String()
+            left_motor_command.data = "forward 50"
+            right_motor_command.data = "forward 50"
+            self.left_motor_pub.publish(left_motor_command)
+            self.right_motor_pub.publish(right_motor_command)
+        else:
+            # Stop after moving forward for 10 seconds
+            self.forward_timer.cancel()
+            self.get_logger().info("Stopping after moving forward.")
+            self.stop_motors()
+
+            # Publish "start" message to 'extinguish' topic
+            self.publish_extinguish_start()
+
+    def publish_extinguish_start(self):
+        self.get_logger().info("Publishing 'start' to 'extinguish' topic.")
+        msg = String()
+        msg.data = "start"
+        self.extinguish_pub.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)
     pseudo_alignment = PseudoAlignment()
 
     try:
-        rclpy.spin_once(pseudo_alignment, timeout_sec=0)  # Run the movement once
+        rclpy.spin(pseudo_alignment)
     except KeyboardInterrupt:
         pass
 
